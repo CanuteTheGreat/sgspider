@@ -43,7 +43,7 @@ def getgirls():
     driver.get("https://www.suicidegirls.com/photos/sg/recent/all/")
     time.sleep(1)
     print("Starting to scroll through photos page.. this will take a *REALLY* LONG time!")
-    print("Each '.' in the progress output represents a new page that has been loaded!")
+    print("Each '.' in the progress output represents a new page that has been loaded and 'x' is a failure to load the next page.")
     print("Please be cautious of memory usage!\n\n")
     print("Progress [", end='', flush=True)
     done = False
@@ -56,12 +56,15 @@ def getgirls():
             print('.', end='', flush=True)
             cctr = 0
         except: 
-            print("reached end or next page failed!")
+            print('x', end='', flush=True)
             cctr = cctr + 1
+            time.sleep(10)
             if cctr >= 10:
                 done = True
     print("]\n")
     print("Total albums found: " + str(albumctr))
+
+    print("Collecting the URLs for each album. This will take a LONG time!")
 
     urls = []
     elems = driver.find_elements_by_xpath("//a[@href]")
@@ -76,6 +79,8 @@ def getgirls():
     return girls
 
 def getimgs(girls):
+    print("collecting the URLs for the images. This will take a LONG time.")
+    
     for girl in girls:
         driver.get(girl)
         urls = []
