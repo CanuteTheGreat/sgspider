@@ -18,11 +18,14 @@ elif os.name == 'posix':
 driver = webdriver.Firefox(executable_path=ff_exec_path, options=options)
 
 def getcreds():
+    print("Reading configuration.")
     configuration = configparser.ConfigParser()
     configuration.read('sgspider.ini')
+    print("Finished reading configuration.")
     return configuration
 
 def login(credentials):
+    print("Loading front page and initiating login")
     driver.get("https://suicidegirls.com")
     time.sleep(1)
     driver.find_element_by_id("login").click()
@@ -36,11 +39,14 @@ def login(credentials):
     password.send_keys(credentials['main']['password'])
     time.sleep(1)
     driver.find_element_by_xpath("//button[@class = 'button call-to-action']").click()
+    print("Login finished, but unverified")
     time.sleep(1)
 
 def getgirls():
+    print("Loading photos page.")
     #driver.get("https://suicidegirls.com/photos")
     driver.get("https://www.suicidegirls.com/photos/sg/recent/all/")
+    print("Finished loading photos page.")
     time.sleep(1)
     print("Starting to scroll through photos page.. this will take a *REALLY* LONG time!")
     print("Each '.' in the progress output represents a new page that has been loaded and 'x' is a failure to load the next page.")
@@ -80,7 +86,7 @@ def getgirls():
 
 def getimgs(girls):
     print("collecting the URLs for the images. This will take a LONG time.")
-    
+
     for girl in girls:
         driver.get(girl)
         urls = []
