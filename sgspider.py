@@ -40,6 +40,7 @@ def login(credentials):
     time.sleep(1)
     driver.find_element_by_xpath("//button[@class = 'button call-to-action']").click()
     print("Login finished, but unverified")
+    # TODO: check that we logged in successfully
     time.sleep(1)
 
 def getgirls():
@@ -108,12 +109,12 @@ def getimgs(girls):
     cleanup()
 
 def dlimgs(girl, album, url):
-    path = os.path.join("./suicidegirls", girl)
+    path = os.path.join(os.path.abspath('./suicidegirls', girl)
     path = os.path.join(path, album)
     os.makedirs(path, exist_ok=True)   
     filename = os.path.join(path, re.sub('(.*)/', "", os.path.join(path, url)))
     print("Looking at: " + str(url))
-    if os.path.exists(filename) == True:
+    if os.path.exists(filename.strip()) == True:
         print("File: " + str(filename) + " already downloaded, skipping!")
         return
     print("File: "  + str(filename) + " not downloaded, downloading now!")
@@ -123,6 +124,7 @@ def dlimgs(girl, album, url):
     del response
 
 def cleanup():
+    print("Finished. You may want to run again to get additional albums that did not fit in the page views.")
     driver.quit()
     quit()
 
