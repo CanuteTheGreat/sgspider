@@ -50,7 +50,6 @@ def getgirls():
     time.sleep(1)
     print("Starting to scroll through photos page.. this will take a *REALLY* LONG time!")
     print("Each '.' in the progress output represents a new page that has been loaded and 'x' is a failure to load the next page.")
-    print("Please be cautious of memory usage!\n\n")
     print("Progress [", end='', flush=True)
     done = False
     cctr = 0
