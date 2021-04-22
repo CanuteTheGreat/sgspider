@@ -109,10 +109,11 @@ def getimgs(girls):
     cleanup()
 
 def dlimgs(girl, album, url):
-    path = os.path.join(os.path.abspath('./suicidegirls', girl)
+    path = os.path.join(os.path.abspath('suicidegirls'), girl)
     path = os.path.join(path, album)
     os.makedirs(path, exist_ok=True)   
     filename = os.path.join(path, re.sub('(.*)/', "", os.path.join(path, url)))
+    filename = filename.strip()
     print("Looking at: " + str(url))
     if os.path.exists(filename.strip()) == True:
         print("File: " + str(filename) + " already downloaded, skipping!")
