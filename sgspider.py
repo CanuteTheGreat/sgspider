@@ -5,6 +5,7 @@ import time
 import re
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.common.keys import Keys
 import os
 import configparser
 
@@ -27,6 +28,8 @@ def getcreds():
 def login(credentials):
     print("Loading front page and initiating login")
     driver.get("https://suicidegirls.com")
+    time.sleep(1)
+    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
     time.sleep(1)
     driver.find_element_by_id("login").click()
     time.sleep(1)
@@ -54,9 +57,9 @@ def getgirls():
     print("Progress [", end='', flush=True)
     done = False
     cctr = 0
-    albumctr = 0
+    pagectr = 0
     while done == False:
-        albumctr = albumctr + 1
+        pagectr = pagectr + 1
         try:
             driver.find_element_by_xpath("//a[@id = 'load-more']").click()
             print('.', end='', flush=True)
@@ -64,11 +67,11 @@ def getgirls():
         except: 
             print('x', end='', flush=True)
             cctr = cctr + 1
-            time.sleep(10)
+            time.sleep(1)
             if cctr >= 10:
                 done = True
     print("]\n")
-    print("Total albums found: " + str(albumctr))
+    print("Total pages loaded: " + str(pagectr))
 
     print("Collecting the URLs for each album. This will take a LONG time!")
 
@@ -120,8 +123,18 @@ def dlimgs(girl, album, url):
         return
     print("File: "  + str(filename) + " not downloaded, downloading now!")
     response = requests.get(url, stream=True)
-    with open(filename, 'wb') as out_file:
-        shutil.copyfileobj(response.raw, out_file)
+    timeout = 10
+    while True:
+        try:
+            with open(filename, 'wb') as out_file:
+                shutil.copyfileobj(response.raw, out_file)
+                break
+        except:
+            print("Encountered error writing file '" + str(filename) + "', sleeping " + str(timeout) + " seconds...")
+            time.sleep(timeout)
+            print("retrying...")
+            timeout = timeout + 10
+            pass
     del response
 
 def cleanup():
