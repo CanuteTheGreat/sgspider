@@ -48,7 +48,6 @@ def login(credentials):
 
 def getgirls():
     print("Loading photos page.")
-    #driver.get("https://suicidegirls.com/photos")
     driver.get("https://www.suicidegirls.com/photos/sg/recent/all/")
     print("Finished loading photos page.")
     time.sleep(1)
