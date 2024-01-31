@@ -106,7 +106,12 @@ def getimgs(girls):
         album = re.sub('/', '', album)
         for img in urls:
             if "cloudfront" in img:
-                dlimgs(name, album, img)
+                if '?v' in img:
+                    new_img = img.split('?v')[0]
+                    dlimgs(name, album, new_img)
+                else:
+                    dlimgs(name, album, img)                
+                #dlimgs(name, album, img)
     # If we reach this we have looped through all the albums, so let's clean things up
     cleanup()
 
