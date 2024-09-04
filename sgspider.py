@@ -121,6 +121,7 @@ def dlimgs(girl, album, url):
     os.makedirs(path, exist_ok=True)   
     filename = os.path.join(path, re.sub('(.*)/', "", os.path.join(path, url)))
     filename = filename.strip()
+    filename = filename.split("?")[0]
     print("Looking at: " + str(url))
     if os.path.exists(filename.strip()) == True:
         print("File: " + str(filename) + " already downloaded, skipping!")
