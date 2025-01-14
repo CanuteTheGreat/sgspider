@@ -20,7 +20,7 @@ driver = webdriver.Firefox(executable_path=ff_exec_path, options=options)
 
 def getcreds():
     print("Reading configuration.")
-    configuration = configparser.ConfigParser()
+    configuration = configparser.ConfigParser(interpolation=None)
     configuration.read('sgspider.ini')
     print("Finished reading configuration.")
     return configuration
