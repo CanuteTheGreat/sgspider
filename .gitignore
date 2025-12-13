@@ -1,2 +1,4 @@
 sgspider.ini
 suicidegirls
+.sgspider.lock
+__pycache__/
