@@ -418,16 +418,33 @@ class SGSpider:
     def is_logged_in(self) -> bool:
         """Check if we're currently logged in."""
         try:
-            content = self.page.content().lower()
             url = self.page.url.lower()
 
-            # Negative indicators
+            # Negative indicators - URL-based
             if "login" in url or "join" in url:
                 return False
-            if "login" in content and "logout" not in content:
-                return False
 
-            # Positive indicators
+            # Check for logged-in specific elements (more reliable than text search)
+            # Look for account/profile links, logout buttons, or member-only elements
+            logged_in_selectors = [
+                "a[href*='/member/']",  # Member profile link
+                "a[href*='/account']",  # Account settings
+                ".user-menu",           # User menu
+                ".logged-in",           # Logged-in class
+                "#logout",              # Logout button
+                "a[href*='logout']",    # Logout link
+                ".member-nav",          # Member navigation
+            ]
+
+            for selector in logged_in_selectors:
+                try:
+                    if self.page.locator(selector).first.is_visible(timeout=1000):
+                        return True
+                except Exception:
+                    continue
+
+            # Fallback: check page content
+            content = self.page.content().lower()
             if "logout" in content:
                 return True
             if self.credentials:
@@ -450,7 +467,12 @@ class SGSpider:
         def attempt_login():
             print("Navigating to main page...")
             self.page.goto(self.base_url, wait_until="domcontentloaded")
-            self.random_delay(10, 15)
+            self.random_delay(5, 8)
+
+            # Check if we're already logged in (e.g., from previous session)
+            if self.is_logged_in():
+                print("Already logged in!")
+                return True
 
             # Simulate reading the page
             self.page.evaluate("window.scrollTo(0, 200);")
