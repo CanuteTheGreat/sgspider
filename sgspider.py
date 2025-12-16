@@ -238,6 +238,16 @@ class SGSpider:
         self.page = self.context.new_page()
         self.page.set_default_timeout(self.page_load_timeout)
 
+        # Handle popup windows - close any unwanted new tabs/popups
+        def handle_popup(popup):
+            popup_url = popup.url
+            # Only allow pages from suicidegirls.com, close all others
+            if "suicidegirls.com" not in popup_url:
+                print(f"  Closing unwanted popup: {popup_url}")
+                popup.close()
+
+        self.context.on("page", handle_popup)
+
         print("Browser initialized successfully.")
 
     def stop_browser(self):
