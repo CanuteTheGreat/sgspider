@@ -277,6 +277,10 @@ class SGSpider:
         if self.playwright:
             self.start_browser(self.playwright)
 
+            # Wait for network stack to stabilize after browser restart
+            print("Waiting for network to stabilize...")
+            time.sleep(5)
+
             # Re-login
             if self.login():
                 print("Browser restarted and re-logged in successfully.")
