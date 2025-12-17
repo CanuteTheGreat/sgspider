@@ -11,6 +11,7 @@ import random
 import gc
 import fcntl
 import atexit
+import json
 import configparser
 import platform
 import hashlib
@@ -40,6 +41,7 @@ class SGSpider:
         self.base_url = "https://www.suicidegirls.com"
         self.download_dir = Path("suicidegirls").absolute()
         self.placeholder_hash = None  # Hash of the unauthenticated placeholder image
+        self.state_file = Path(__file__).parent / ".sgspider.state.json"
 
         # Settings loaded from config (with defaults)
         self.headless = DEFAULT_HEADLESS
@@ -921,6 +923,39 @@ class SGSpider:
 
         return (downloaded, False)
 
+    def save_state(self, albums: list, current_index: int, total_downloaded: int):
+        """Save current progress to state file for resume capability."""
+        state = {
+            "albums": albums,
+            "current_index": current_index,
+            "total_downloaded": total_downloaded,
+            "timestamp": time.time(),
+        }
+        try:
+            with open(self.state_file, "w") as f:
+                json.dump(state, f)
+        except Exception as e:
+            print(f"Warning: Could not save state: {e}")
+
+    def load_state(self) -> dict:
+        """Load saved state if it exists."""
+        if not self.state_file.exists():
+            return None
+        try:
+            with open(self.state_file, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Warning: Could not load state: {e}")
+            return None
+
+    def clear_state(self):
+        """Remove state file when run completes successfully."""
+        try:
+            if self.state_file.exists():
+                self.state_file.unlink()
+        except Exception as e:
+            print(f"Warning: Could not remove state file: {e}")
+
     def run(self, album_urls: list = None):
         """Main entry point - run the spider.
 
@@ -934,6 +969,37 @@ class SGSpider:
 
         self.load_credentials()
 
+        # Check for saved state to resume from
+        saved_state = self.load_state()
+        start_index = 0
+        total_downloaded = 0
+        albums = None
+
+        if saved_state and not album_urls:
+            # Only resume if not given explicit album URLs
+            state_age = time.time() - saved_state.get("timestamp", 0)
+            state_age_hours = state_age / 3600
+
+            if state_age_hours < 24:  # State is less than 24 hours old
+                albums = saved_state.get("albums", [])
+                start_index = saved_state.get("current_index", 0)
+                total_downloaded = saved_state.get("total_downloaded", 0)
+
+                if albums and start_index < len(albums):
+                    print(f"\n=== Resuming from saved state ===")
+                    print(f"  State saved {state_age_hours:.1f} hours ago")
+                    print(f"  Resuming at album {start_index + 1} of {len(albums)}")
+                    print(f"  Previously downloaded: {total_downloaded} images")
+                else:
+                    # State is complete or invalid, start fresh
+                    albums = None
+                    start_index = 0
+                    total_downloaded = 0
+                    self.clear_state()
+            else:
+                print(f"\nFound saved state but it's {state_age_hours:.1f} hours old (>24h). Starting fresh.")
+                self.clear_state()
+
         with sync_playwright() as playwright:
             try:
                 self.start_browser(playwright)
@@ -942,11 +1008,13 @@ class SGSpider:
                     print("Failed to log in. Exiting.")
                     return
 
-                if album_urls:
-                    albums = album_urls
-                    print(f"\n=== Processing {len(albums)} Specified Album(s) ===")
-                else:
-                    albums = self.collect_album_urls()
+                # Determine album list if not resuming
+                if albums is None:
+                    if album_urls:
+                        albums = album_urls
+                        print(f"\n=== Processing {len(albums)} Specified Album(s) ===")
+                    else:
+                        albums = self.collect_album_urls()
 
                 if not albums:
                     print("No albums found. Exiting.")
@@ -965,13 +1033,16 @@ class SGSpider:
                     print("Warning: Could not get sample image for placeholder detection.")
                     print("Placeholder detection will be disabled.")
 
-                print(f"\n=== Processing {len(albums)} Albums ===")
+                if start_index > 0:
+                    print(f"\n=== Resuming: Processing albums {start_index + 1} to {len(albums)} ===")
+                else:
+                    print(f"\n=== Processing {len(albums)} Albums ===")
 
-                total_downloaded = 0
                 failed_albums = 0
 
-                for i, album_url in enumerate(albums, 1):
-                    print(f"\n[{i}/{len(albums)}] {album_url}")
+                for i in range(start_index, len(albums)):
+                    album_url = albums[i]
+                    print(f"\n[{i + 1}/{len(albums)}] {album_url}")
 
                     try:
                         count, auth_failure = self.process_album(album_url)
@@ -992,6 +1063,10 @@ class SGSpider:
                         print(f"  Error processing album: {e}")
                         failed_albums += 1
 
+                    # Save progress after each album (only for non-explicit URLs)
+                    if not album_urls:
+                        self.save_state(albums, i + 1, total_downloaded)
+
                     # If too many consecutive failures, try to recover
                     if failed_albums >= 3:
                         print("\nToo many consecutive failures, attempting recovery...")
@@ -1001,12 +1076,15 @@ class SGSpider:
                         failed_albums = 0
 
                     # Periodic browser restart to manage memory
-                    if self.browser_restart_interval > 0 and i % self.browser_restart_interval == 0 and i < len(albums):
+                    if self.browser_restart_interval > 0 and (i + 1) % self.browser_restart_interval == 0 and i + 1 < len(albums):
                         if not self.restart_browser():
                             print("Browser restart failed, attempting to continue...")
                             if not self.login():
                                 print("Could not recover session. Stopping.")
                                 break
+
+                # Clear state on successful completion
+                self.clear_state()
 
                 print("\n" + "=" * 60)
                 print(f"Finished! Downloaded {total_downloaded} images total.")
