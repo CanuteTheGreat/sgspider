@@ -1,8 +1,14 @@
-sgspider.py.tmp
+# Local config with the account login - never commit (see sgspider.example.ini)
 sgspider.ini
+sgspider.py.tmp
+# Local cron wrapper and its output
+go.sh
+log.txt
+*.log
+# Downloaded data and runtime state
 suicidegirls
 .sgspider.lock
 .sgspider.state.json
+old/
+geckodriver*
 __pycache__/
-go.sh
-log.txt

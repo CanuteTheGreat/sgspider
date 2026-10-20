@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    # Pure Python + headless Chromium against a local fixture server; arch-independent
+    # (the Playwright image is multi-arch), so any idle linux-any slot can take it.
+    runs-on: linux-any
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.64.0-noble
+    steps:
+      - name: Checkout
+        run: |
+          command -v git >/dev/null || (apt-get update -qq && apt-get install -y -qq git >/dev/null)
+          git clone --quiet "${{ github.server_url }}/${{ github.repository }}.git" src
+          cd src && git checkout --quiet "${{ github.sha }}" && git log -1 --oneline
+      - name: Syntax check
+        working-directory: src
+        run: python3 -m py_compile sgspider.py
+      - name: Regression tests (real Chromium, local fixture only)
+        working-directory: src
+        run: python3 -m unittest discover -s tests -v

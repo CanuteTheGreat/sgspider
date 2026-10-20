@@ -28,6 +28,17 @@ DEFAULT_DOWNLOAD_TIMEOUT = 30000  # 30 seconds for image downloads
 DEFAULT_PAGE_LOAD_TIMEOUT = 60000  # 60 seconds for page loads
 DEFAULT_MAX_ALBUM_PAGES = 0  # Limit album loading iterations (0 = unlimited)
 DEFAULT_BROWSER_RESTART_INTERVAL = 50  # Restart browser every N albums to manage memory
+DEFAULT_RECENT_PERIOD = "30"  # Album feed period: /photos/sg/recent/<period>/ (e.g. "all", "30")
+
+# Age-confirmation interstitial ("This is an adult website ... Enter - I'm 18+").
+# It is a fancybox modal whose full-page .fancybox-overlay intercepts every click,
+# so it must be confirmed before anything else on the page can be clicked.
+AGE_GATE_CONFIRM_SELECTORS = [
+    "[data-adult-confirm]",
+    ".adult-gate button:has-text('Enter')",
+    "#adult-gate button",
+]
+BLOCKING_OVERLAY_SELECTOR = ".fancybox-overlay"
 
 
 class SGSpider:
@@ -51,6 +62,7 @@ class SGSpider:
         self.page_load_timeout = DEFAULT_PAGE_LOAD_TIMEOUT
         self.max_album_pages = DEFAULT_MAX_ALBUM_PAGES
         self.browser_restart_interval = DEFAULT_BROWSER_RESTART_INTERVAL
+        self.recent_period = DEFAULT_RECENT_PERIOD
 
         # Playwright instance reference (needed for browser restarts)
         self.playwright = None
@@ -72,6 +84,7 @@ class SGSpider:
             self.page_load_timeout = settings.getint("page_load_timeout", self.page_load_timeout)
             self.max_album_pages = settings.getint("max_album_pages", self.max_album_pages)
             self.browser_restart_interval = settings.getint("browser_restart_interval", self.browser_restart_interval)
+            self.recent_period = settings.get("recent_period", self.recent_period).strip().strip("/") or DEFAULT_RECENT_PERIOD
 
         print("Configuration loaded.")
         return config
@@ -94,11 +107,11 @@ class SGSpider:
             if bbox:
                 offset_x = random.uniform(0.2, 0.8) * bbox["width"]
                 offset_y = random.uniform(0.2, 0.8) * bbox["height"]
-                element.click(position={"x": offset_x, "y": offset_y}, delay=random.uniform(100, 300))
+                element.click(position={"x": offset_x, "y": offset_y}, delay=random.uniform(100, 300), timeout=10000)
             else:
-                element.click(delay=random.uniform(100, 300))
+                element.click(delay=random.uniform(100, 300), timeout=10000)
         except Exception:
-            element.click()
+            element.click(timeout=10000)
 
     def random_mouse_movement(self):
         """Simulate random mouse movements on the page."""
@@ -408,6 +421,38 @@ class SGSpider:
         except Exception:
             return False
 
+    def dismiss_age_gate(self) -> bool:
+        """Confirm the site's age-verification modal if it is showing.
+
+        The modal's overlay intercepts pointer events, so the login button (and
+        anything else) can't be clicked until it is dismissed. Confirming sets the
+        site's ``confirmed-adult`` cookie, so it normally only appears once per
+        browser context.
+
+        Returns:
+            True if a gate was found and dismissed, False if none was showing.
+        """
+        for selector in AGE_GATE_CONFIRM_SELECTORS:
+            try:
+                btn = self.page.locator(selector).first
+                if btn.is_visible(timeout=1500):
+                    print("Confirming age-verification prompt...")
+                    btn.click(timeout=10000)
+                    try:
+                        self.page.locator(BLOCKING_OVERLAY_SELECTOR).first.wait_for(
+                            state="hidden", timeout=10000
+                        )
+                    except PlaywrightTimeout:
+                        print("  Warning: overlay still visible after confirming age prompt")
+                    self.random_delay(0.5, 1.5)
+                    return True
+            except PlaywrightTimeout:
+                continue
+            except Exception as e:
+                print(f"  Could not dismiss age prompt via {selector}: {e}")
+                continue
+        return False
+
     def accept_cookies(self):
         """Accept cookie consent if present."""
         try:
@@ -474,6 +519,7 @@ class SGSpider:
             print("Navigating to main page...")
             self.page.goto(self.base_url, wait_until="domcontentloaded")
             self.random_delay(5, 8)
+            self.dismiss_age_gate()
 
             # Check if we're already logged in (e.g., from previous session)
             if self.is_logged_in():
@@ -490,6 +536,7 @@ class SGSpider:
             self.random_mouse_movement()
             self.page.keyboard.press("Escape")
             self.random_delay(1, 2)
+            self.dismiss_age_gate()
 
             # Find and click login button
             login_selectors = [
@@ -504,24 +551,32 @@ class SGSpider:
             ]
 
             login_clicked = False
+            last_click_error = None
             for selector in login_selectors:
                 try:
                     btn = self.page.locator(selector).first
                     if btn.is_visible(timeout=2000):
                         print(f"Found login button: {selector}")
                         self.human_click(btn)
-                        login_clicked = True
                         self.random_delay(2, 4)
 
                         # Wait for login form
-                        self.page.wait_for_selector("input[name='username']", timeout=5000)
+                        self.page.wait_for_selector(
+                            "input[name='username']", state="visible", timeout=5000
+                        )
                         print("Login form appeared.")
+                        login_clicked = True
                         break
-                except Exception:
+                except Exception as e:
+                    # Keep the first line of the real reason (e.g. an overlay
+                    # intercepting clicks) instead of silently swallowing it.
+                    last_click_error = f"{selector}: {str(e).splitlines()[0]}"
+                    print(f"  Login button {selector} did not open the form: {last_click_error}")
                     continue
 
             if not login_clicked:
-                raise Exception("Could not find login button")
+                detail = f" (last error: {last_click_error})" if last_click_error else ""
+                raise Exception(f"Could not open login form{detail}")
 
             # Fill login form
             self.random_delay(1, 2)
@@ -597,9 +652,9 @@ class SGSpider:
         print("\n=== Collecting Album URLs ===")
 
         def load_albums_page():
-            #self.page.goto(f"{self.base_url}/photos/sg/recent/all/", wait_until="domcontentloaded")
-            self.page.goto(f"{self.base_url}/photos/sg/recent/30/", wait_until="domcontentloaded")
+            self.page.goto(f"{self.base_url}/photos/sg/recent/{self.recent_period}/", wait_until="domcontentloaded")
             self.random_delay(3, 5)
+            self.dismiss_age_gate()
 
             if "server error" in self.page.content().lower():
                 raise Exception("Server error on photos page")
@@ -756,6 +811,7 @@ class SGSpider:
         def load_and_extract():
             self.page.goto(album_url, wait_until="domcontentloaded")
             self.random_delay(2, 4)
+            self.dismiss_age_gate()
 
             # Check for auth issues
             current_url = self.page.url.lower()
@@ -957,6 +1013,18 @@ class SGSpider:
         except Exception as e:
             print(f"Warning: Could not remove state file: {e}")
 
+    def check_login(self) -> bool:
+        """Smoke check: log in with the configured account and report the result."""
+        self.load_credentials()
+        with sync_playwright() as playwright:
+            try:
+                self.start_browser(playwright)
+                ok = self.login()
+                print("LOGIN CHECK: OK" if ok else "LOGIN CHECK: FAILED")
+                return bool(ok)
+            finally:
+                self.stop_browser()
+
     def run(self, album_urls: list = None):
         """Main entry point - run the spider.
 
@@ -1118,8 +1186,12 @@ def main():
     atexit.register(release_lock)
 
     spider = SGSpider()
+    args = sys.argv[1:]
+    if args and args[0] == "--check-login":
+        # Smoke check: start the browser, log in, and exit (no downloads).
+        sys.exit(0 if spider.check_login() else 1)
     # If album URLs provided as arguments, use them; otherwise collect from feed
-    album_urls = sys.argv[1:] if len(sys.argv) > 1 else None
+    album_urls = args or None
     spider.run(album_urls)
 
 
