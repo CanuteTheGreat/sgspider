@@ -1,5 +1,8 @@
+sgspider.py.tmp
 sgspider.ini
 suicidegirls
 .sgspider.lock
 .sgspider.state.json
 __pycache__/
+go.sh
+log.txt

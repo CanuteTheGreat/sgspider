@@ -597,7 +597,8 @@ class SGSpider:
         print("\n=== Collecting Album URLs ===")
 
         def load_albums_page():
-            self.page.goto(f"{self.base_url}/photos/sg/recent/all/", wait_until="domcontentloaded")
+            #self.page.goto(f"{self.base_url}/photos/sg/recent/all/", wait_until="domcontentloaded")
+            self.page.goto(f"{self.base_url}/photos/sg/recent/30/", wait_until="domcontentloaded")
             self.random_delay(3, 5)
 
             if "server error" in self.page.content().lower():
