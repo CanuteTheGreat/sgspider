@@ -42,7 +42,10 @@ DEFAULT_PAGE_LOAD_TIMEOUT = 60000  # 60 seconds for page loads
 DEFAULT_MAX_ALBUM_PAGES = 0  # Limit album loading iterations (0 = unlimited)
 DEFAULT_BROWSER_RESTART_INTERVAL = 50  # Restart browser every N opened albums to manage memory
 DEFAULT_RECENT_PERIOD = "30"  # Album feed period: /photos/sg/recent/<period>/ (e.g. "all", "30")
-DEFAULT_DOWNLOAD_CONCURRENCY = 8  # parallel image downloads from the image CDN
+# Parallel image downloads from the image CDN. Measured 2026-10-20 on hacktheplanet
+# (one cold album per level): 4 -> ~10 s/album, 8 -> ~5 s, 16 -> ~2.2 s, 24 -> ~2 s,
+# no HTTP errors at any level; the goofys write side stays ~5-6 MB/s at any level.
+DEFAULT_DOWNLOAD_CONCURRENCY = 16
 DEFAULT_ALBUM_DELAY_MIN = 0.0  # optional pause between album page loads (seconds)
 DEFAULT_ALBUM_DELAY_MAX = 0.0
 DEFAULT_SKIP_COMPLETED_ALBUMS = True
@@ -1153,8 +1156,13 @@ class SGSpider:
             finally:
                 self.stop_browser()
 
-    def bench_downloads(self, album_url: str, levels: list, dest: Path) -> list:
-        """Download one album's images at each concurrency level into dest; report MB/s."""
+    def bench_downloads(self, album_urls: list, levels: list, dest: Path) -> list:
+        """Measure download throughput per concurrency level.
+
+        Level i downloads album ``album_urls[i % len(album_urls)]`` into ``dest``
+        (deleted afterwards). Give one album per level: once an album has been
+        fetched the CDN edge has it cached, which would flatter later levels.
+        """
         self.load_credentials()
         results = []
         with sync_playwright() as playwright:
@@ -1162,11 +1170,15 @@ class SGSpider:
                 self.start_browser(playwright)
                 if not self.login():
                     return results
-                urls = self.extract_image_urls(album_url)
-                print(f"Benchmark album has {len(urls)} images")
-                self.capture_placeholder_hash(urls[0].split("?")[0])
-                self.sync_cookies()
-                for level in levels:
+                for n, level in enumerate(levels):
+                    album_url = album_urls[n % len(album_urls)]
+                    urls = self.extract_image_urls(album_url)
+                    if not urls:
+                        print(f"BENCH skip: no images in {album_url}")
+                        continue
+                    if self.placeholder_hash is None:
+                        self.capture_placeholder_hash(urls[0].split("?")[0])
+                    self.sync_cookies()
                     target = dest / f"c{level}"
                     target.mkdir(parents=True, exist_ok=True)
                     before_bytes = self.profiler.counters.get("bytes downloaded", 0)
@@ -1181,7 +1193,7 @@ class SGSpider:
                     ok = sum(1 for s, _ in outcomes if s)
                     errs = sum(v for k, v in self.profiler.counters.items() if k.startswith("HTTP ")) - before_errs
                     print(f"BENCH concurrency={level:3d} ok={ok}/{len(urls)} http_errors={errs} "
-                          f"{mb:.1f} MB in {secs:.1f}s = {mb / secs:.1f} MB/s")
+                          f"{mb:.1f} MB in {secs:.1f}s = {mb / secs:.1f} MB/s  ({album_url})", flush=True)
                     results.append((level, ok, errs, mb, secs))
                     for f in target.iterdir():
                         f.unlink()
@@ -1339,13 +1351,13 @@ def main():
         # Smoke check: start the browser, log in, and exit (no downloads).
         sys.exit(0 if spider.check_login() else 1)
     if args and args[0] == "--bench-downloads":
-        # --bench-downloads <album_url> [levels, e.g. 4,8,16] [scratch dir]
+        # --bench-downloads <album_url[,album_url...]> [levels, e.g. 4,8,16] [scratch dir]
         if len(args) < 2:
-            print("usage: sgspider.py --bench-downloads <album_url> [4,8,16] [scratch_dir]")
+            print("usage: sgspider.py --bench-downloads <album_url[,...]> [4,8,16] [scratch_dir]")
             sys.exit(2)
         levels = [int(x) for x in (args[2] if len(args) > 2 else "4,8,12,16").split(",")]
         dest = Path(args[3] if len(args) > 3 else "/tmp/sgspider-bench")
-        sys.exit(0 if spider.bench_downloads(args[1], levels, dest) else 1)
+        sys.exit(0 if spider.bench_downloads(args[1].split(","), levels, dest) else 1)
     # If album URLs provided as arguments, use them; otherwise collect from feed
     spider.run(args or None)
 
