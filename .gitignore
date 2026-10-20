@@ -9,6 +9,8 @@ log.txt
 suicidegirls
 .sgspider.lock
 .sgspider.state.json
+.sgspider.albums.json
+.sgspider.albums.tmp
 old/
 geckodriver*
 __pycache__/

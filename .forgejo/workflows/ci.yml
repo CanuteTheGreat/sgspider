@@ -22,11 +22,11 @@ jobs:
           command -v git >/dev/null || (apt-get update -qq && apt-get install -y -qq git >/dev/null)
           git clone --quiet "${{ github.server_url }}/${{ github.repository }}.git" src
           cd src && git checkout --quiet "${{ github.sha }}" && git log -1 --oneline
-      - name: Install Playwright for Python (same version as the image's browsers)
+      - name: Install Playwright for Python (same version as the image's browsers) and requests
         run: |
           python3 -m pip --version || (apt-get update -qq && apt-get install -y -qq python3-pip >/dev/null)
-          python3 -m pip install -q --break-system-packages "playwright==1.64.0"
-          python3 -c "import playwright, importlib.metadata as m; print('playwright', m.version('playwright'))"
+          python3 -m pip install -q --break-system-packages "playwright==1.64.0" requests
+          python3 -c "import playwright, importlib.metadata as m; print('playwright', m.version('playwright'), 'requests', m.version('requests'))"
       - name: Syntax check
         working-directory: src
         run: python3 -m py_compile sgspider.py
